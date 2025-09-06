@@ -1,44 +1,89 @@
 'use client';
 
-import { useInfiniteQuery } from '@tanstack/react-query';
+import {
+  useInfiniteQuery,
+  QueryFunctionContext,
+  InfiniteData,
+} from '@tanstack/react-query';
 import { useRef, useEffect } from 'react';
 import Image from 'next/image';
 
-interface Character {
+// --- Types generated from your API ---
+export interface ApiInfo {
+  count: number;
+  pages: number;
+  next: string | null;
+  prev: string | null;
+}
+
+export interface CharacterOrigin {
+  name: string;
+  url: string;
+}
+
+export interface CharacterLocation {
+  name: string;
+  url: string;
+}
+
+export interface Character {
   id: number;
   name: string;
   status: string;
   species: string;
-  origin: { name: string };
-  location: { name: string };
+  type: string;
+  gender: string;
+  origin: CharacterOrigin;
+  location: CharacterLocation;
   image: string;
+  episode: string[];
+  url: string;
+  created: string;
 }
 
-interface ApiResponse {
-  info: {
-    next: string | null;
-  };
+export interface ApiResponse {
+  info: ApiInfo;
   results: Character[];
 }
+// --- End types ---
 
-async function fetchCharacters({
-  pageParam = 'https://rickandmortyapi.com/api/character',
-}): Promise<ApiResponse> {
+async function fetchCharacters(
+  context: QueryFunctionContext
+): Promise<ApiResponse> {
+  const pageParam =
+    typeof context.pageParam === 'string'
+      ? context.pageParam
+      : 'https://rickandmortyapi.com/api/character';
   const res = await fetch(pageParam);
+  if (!res.ok) {
+    throw new Error('Failed to fetch data');
+  }
   return res.json();
 }
 
 export default function RickAndMortyCards() {
-  const { data, fetchNextPage, hasNextPage, isFetchingNextPage, status } =
-    useInfiniteQuery<ApiResponse>({
-      queryKey: ['characters'],
-      queryFn: fetchCharacters,
-      getNextPageParam: (lastPage) => lastPage.info.next ?? undefined,
-    });
+  const {
+    data,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    isLoading,
+    isError,
+  } = useInfiniteQuery<
+    ApiResponse,
+    Error,
+    InfiniteData<ApiResponse>,
+    [string],
+    string
+  >({
+    queryKey: ['characters'],
+    queryFn: fetchCharacters,
+    getNextPageParam: (lastPage) => lastPage.info.next ?? undefined,
+    initialPageParam: 'https://rickandmortyapi.com/api/character',
+  });
 
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
 
-  // Intersection Observer to trigger fetchNextPage
   useEffect(() => {
     if (!hasNextPage || !loadMoreRef.current) return;
 
@@ -52,15 +97,15 @@ export default function RickAndMortyCards() {
     );
 
     observer.observe(loadMoreRef.current);
-
     return () => {
       if (loadMoreRef.current) observer.unobserve(loadMoreRef.current);
     };
   }, [hasNextPage, fetchNextPage]);
 
-  if (status === 'loading')
-    return <p className='text-center text-gray-400'>Loading...</p>;
-  if (status === 'error')
+  if (!data) return null;
+
+  if (isLoading) return <p className='text-center text-gray-400'>Loading...</p>;
+  if (isError)
     return <p className='text-center text-red-500'>Error fetching data</p>;
 
   return (
@@ -70,7 +115,7 @@ export default function RickAndMortyCards() {
       </h1>
 
       <div className='grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6'>
-        {data?.pages.map((page, i) =>
+        {data.pages.map((page) =>
           page.results.map((char) => (
             <div
               key={char.id}
@@ -92,14 +137,13 @@ export default function RickAndMortyCards() {
         )}
       </div>
 
-      {/* Loader for infinite scroll */}
       <div ref={loadMoreRef} className='text-center py-6'>
         {isFetchingNextPage ? (
           <p className='text-gray-400'>Loading more...</p>
         ) : hasNextPage ? (
           <p className='text-gray-400'>Scroll to load more...</p>
         ) : (
-          <p className='text-gray-500'>No more characters </p>
+          <p className='text-gray-500'>No more characters</p>
         )}
       </div>
     </div>
